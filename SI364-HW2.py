@@ -11,8 +11,24 @@
 ## You can assume a user will always enter a number only.
 
 from flask import Flask, request
+import requests
+from bs4 import BeautifulSoup
+import json
 app = Flask(__name__)
 app.debug = True
+
+def processing():
+	raw_data = requests.get("http://archiveofourown.org/media/")
+	soup = BeautifulSoup(raw_data.text.encode("utf-8"), "html.parser")
+	order_of_cat = soup.find_all("h3", class_ = "heading")[1:-1]
+	headings = soup.find_all("ol", class_ = "index group")
+	if len(order_of_cat) == len(headings):
+		raw_info_dict = {}
+		for position in range(len(order_of_cat)):
+			raw_info_dict[order_of_cat[position].string] = headings[position].find_all("li")
+		return(raw_info_dict)
+	else:
+		return "There has been an error in the retrieval, sorry :("
 
 @app.route('/')
 def hello_to_you():
@@ -42,6 +58,37 @@ def result_page():
 		number = args.get("favoritenumber")
 		doubled = int(number)*2
 		return "Double your favorite number is {}.".format(str(doubled))
+
+@app.route("/radioform", methods= ["POST", "GET"])
+def radio():
+	s= """<form action="http://localhost:5000/topfandoms" method="GET">
+	<h1>Which category would you like to see the top fandoms in?</h1>
+  	<input type="radio" name="category" value="Anime & Manga" checked>Anime and Manga<br>
+  	<input type="radio" name="category" value="Cartoons & Comics & Graphic Novels">Cartoons, Comics, and Graphic Novels<br>
+  	<input type="radio" name="category" value="Books & Literature">Books and Literature<br>
+  	<input type="radio" name="category" value="Celebrities & Real People">Celebrities and Real People<br>
+  	<input type="radio" name="category" value="Movies">Movies <br>
+  	<input type="radio" name="category" value="Music & Bands">Music and Bands<br>
+  	<input type="radio" name="category" value="Theater">Theatre<br>
+  	<input type="radio" name="category" value="TV Shows">TV Shows<br>
+  	<input type="submit" value="Submit">
+	</form>"""
+	return s
+fandom_dict = processing()
+@app.route("/topfandoms", methods = ["POST", "GET"])
+def fandoms():
+	if request.method == "GET":
+		args = request.args
+		fandom = args.get("category")
+		try:
+			raw_fandoms = fandom_dict[fandom]
+		except:
+			return "whoops, looks like your category couldn't be retrieved."
+		cleaned_up = {}
+		for result in raw_fandoms:
+			cleaned_up[result.a.string]= result.get_text().split("\n")[2].strip()[1:-1]
+		presentable_version = "Fandom Name - " + json.dumps(cleaned_up)[1:-1].replace(",", "<br>Fandom Name - ").replace(":", "&nbsp;&nbsp;| Number of Fics - ").replace('"', "")
+		return presentable_version
 
 if __name__ == '__main__':
     app.run()
